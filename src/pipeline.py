@@ -1,29 +1,33 @@
-from pyspark.sql import DataFrame
-from pyspark.sql.functions import explode, col
+from pyspark.sql import SparkSession
+
+from src.transformations import explode_impressions, aggregate_actions, pad_array, normalize_action_schema
 
 
-def explode_impressions(df: DataFrame) -> DataFrame:
+def run_pipeline(impressions_df, clicks_df, add_to_carts_df, orders_df, max_actions=10):
     """
-    Explode the impressions list into individual rows
-    Each row becomes one impression with its item_id and is_order flag.
+    End-to-end pipeline chaining all transformations to produce model-ready data.
     """
-    return df.select(
-        col("dt"),
-        col("ranking_id"),
-        col("customer_id"),
-        explode(col("impressions")).alias("item")
-    ).select(
-        col("dt"),
-        col("ranking_id"),
-        col("customer_id"),
-        col("item.item_id"),
-        col("item.is_order")
+    # Step 1: Explode impressions into one row per item
+    exploded_impressions_df = explode_impressions(impressions_df)
+    exploded_impressions_df.show()
+
+    # Step 2: Aggregate all actions into a unified DataFrame
+    aggregated_actions_df = aggregate_actions(normalize_action_schema(clicks_df, add_to_carts_df, orders_df))
+    aggregated_actions_df.show()
+
+    # Step 3: Pad arrays for model input
+    padded_df = pad_array(aggregated_actions_df, length=max_actions)
+    padded_df.show()
+
+    # Step 4: Join exploded impressions with aggregated actions
+    final_df = exploded_impressions_df.join(
+        padded_df,
+        on=['customer_id'],
+        how='left'
     )
 
+    return final_df
 
-def filter_actions_before_date(actions_df: DataFrame, impression_df: DataFrame) -> DataFrame:
-    """
-    Keep only actions that occurred before the impression date
-    """
-    return actions_df.join(impression_df.select("dt", "customer_id").distinct(), on="customer_id") \
-                     .filter(col("occurred_at") < col("dt"))
+
+if __name__ == "__main__":
+    pass
