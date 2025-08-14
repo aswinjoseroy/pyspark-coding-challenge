@@ -30,4 +30,44 @@ def run_pipeline(impressions_df, clicks_df, add_to_carts_df, orders_df, max_acti
 
 
 if __name__ == "__main__":
-    pass
+    from pyspark.sql.types import ArrayType, StructType, StructField, IntegerType, BooleanType
+    from pyspark.sql.functions import from_json, col
+
+    spark = SparkSession.builder.master(("local[*]")).appName("transformer_feeder").getOrCreate()
+
+    # Example input DataFrames (replace with real read logic)
+    impressions_df = spark.read.csv("/Users/aswinjoseroy/PycharmProjects/pyspark-coding-challenge/data/impressions.csv",
+                                    header=True, inferSchema=True, multiLine=True, escape='"')
+    item_schema = ArrayType(
+        StructType([
+            StructField("item_id", IntegerType(), True),
+            StructField("is_order", BooleanType(), True)
+        ])
+    )
+    impressions_df = impressions_df.withColumn("impressions", from_json(col("impressions"), item_schema))
+
+    clicks_df = spark.read.csv("/Users/aswinjoseroy/PycharmProjects/pyspark-coding-challenge/data/clicks.csv", header=True, inferSchema=True)
+    add_to_carts_df = spark.read.csv("/Users/aswinjoseroy/PycharmProjects/pyspark-coding-challenge/data/add_to_carts.csv", header=True, inferSchema=True)
+    orders_df = spark.read.csv("/Users/aswinjoseroy/PycharmProjects/pyspark-coding-challenge/data/pre_orders.csv", header=True, inferSchema=True)
+
+    impressions_df.printSchema()
+    clicks_df.printSchema()
+    add_to_carts_df.printSchema()
+    orders_df.printSchema()
+
+    print("pipeline starts")
+
+    final_output_df = run_pipeline(impressions_df, clicks_df, add_to_carts_df, orders_df)
+
+    print(final_output_df.show())
+
+    from pyspark.sql.functions import col
+    from pyspark.sql.types import StringType
+
+    # Cast all columns to string
+    final_output_df_str = final_output_df.select([col(c).cast(StringType()) for c in final_output_df.columns])
+
+    # Write to CSV
+    final_output_df_str.coalesce(1).write.csv(
+        "/Users/aswinjoseroy/PycharmProjects/pyspark-coding-challenge/data/final.csv", header=True,
+        mode="overwrite")
